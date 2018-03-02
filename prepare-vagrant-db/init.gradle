@@ -1,0 +1,25 @@
+allprojects {
+    buildscript {
+        repositories {
+            mavenLocal()
+            maven {
+                url "http://jars.interlis.ch"
+            }
+            maven {
+                url "http://download.osgeo.org/webdav/geotools/"
+            }
+            mavenCentral()
+        }
+        dependencies {
+            classpath group: 'ch.so.agi', name: 'gretl',  version: '1.0.4-SNAPSHOT'
+        }
+        ext {
+            sourceDbUrl = System.env.sourceDbUrl
+            sourceDbUser = System.env.sourceDbUser
+            sourceDbPass = System.env.sourceDbPass
+            targetDbUrl = System.env.targetDbUrl
+            targetDbUser = System.env.targetDbUser
+            targetDbPass = System.env.targetDbPass
+        }
+    }
+}

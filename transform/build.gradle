@@ -1,0 +1,94 @@
+description = """Planerischer Gewässerchutz:
+
+1) Datenumbau aus der bestehenden Datenstruktur der GDI in eine modelläquivalente MGDM-Datenstruktur
+2) Export in eine INTERLIS-Transferdatei
+3) Validierung der INTERLIS-Transferdatei
+4) Upload der INTERLIS-Transferdatei in die Aggregationsinfrastruktur der Kantone (geodienste.ch)
+"""
+
+import ch.so.agi.gretl.api.*
+import ch.so.agi.gretl.tasks.*
+
+apply plugin: 'ch.so.agi.gretl'
+
+def targetDbUrl = "jdbc:postgresql://192.168.50.5/sogis"
+def targetDbUser = "ddluser"
+def targetDbPass = "ddluser"
+
+def iliModel = "PlanerischerGewaesserschutz_LV95_V1_1"
+def dbSchema = "afu_gewaesserschutz_export"
+def xtfFile = "planerischer_gewaesserschutz_"+new Date().format('yyyy-MM-dd')+".xtf"
+
+def aiPass = System.env.aiAdminPass
+
+task createSchema(type: Ili2pgImportSchema) {
+    description = "Erstellt die modelläquivalenten Tabellen in einem neuen Schema mit ili2pg."
+    database = [targetDbUrl, targetDbUser, targetDbPass]
+    models = iliModel
+    dbschema = dbSchema
+    nameByTopic = true
+    strokeArcs = true
+    createFk = true
+    createFkIdx = true
+    createUnique = true
+    createNumChecks = true
+    createEnumTabs = true
+    expandMultilingual = true
+    logFile = "ili2pg-schema-import.log"
+}
+
+task transformTableGsBereich(type: SqlExecutor) {
+    description = "Baut die Daten der Klasse 'GSBereich' mittels SQL um und speichert sie im modelläquivalenten MGDM-Schema."
+    database = [targetDbUrl, targetDbUser, targetDbPass]
+    sqlFiles = ["sql/transform-gsbereich.sql"]
+}
+
+task transformTableGwsAreal(type: SqlExecutor) {
+    description = "Baut die Daten der Klasse 'GWSAreal' mittels SQL um und speichert sie im modelläquivalenten MGDM-Schema."
+    database = [targetDbUrl, targetDbUser, targetDbPass]
+    sqlFiles = ["sql/transform-gwsareal.sql"]
+}
+
+task transformTableGwsZone(type: SqlExecutor) {
+    description = "Baut die Daten der Klasse 'GWSZone' mittels SQL um und speichert sie im modelläquivalenten MGDM-Schema."
+    database = [targetDbUrl, targetDbUser, targetDbPass]
+    sqlFiles = ["sql/transform-gwszone.sql"]
+}
+
+task transformAllTables() {
+    description = "Baut die Daten der drei Klassen 'GSBereich', 'GWSAreal' und 'GWSZone' mittels SQL um und speichert sie im modelläquivalenten MGDM-Schema."
+}
+
+transformAllTables.dependsOn {
+    tasks.findAll { task -> task.name.startsWith('transformTable') }
+}
+
+task exportXTF(type: Ili2pgExport) {
+    description = "Exportiert die Daten aus dem MGDM-Schema in eine INTERLIS-Transferdatei mit ili2pg."
+    database = [targetDbUrl, targetDbUser, targetDbPass]
+    models = iliModel
+    dbschema = dbSchema
+    disableValidation = true
+    dataFile = xtfFile
+}
+
+task validateXTF(dependsOn: 'exportXTF', type: IliValidator) {
+    description = "Validiert die exportierte INTERLIS-Transferdatei mit ilivalidator. Kann auch direkt im Export-Task erledigt werden."    
+    dataFiles = [xtfFile]
+    logFile = "ilivalidator-planerischer-gewaesserschutz.log"
+}
+
+task zipXTF(type: Zip) {
+    description = "Zipped die exportierte INTERLIS-Transferdatei."        
+    from './'
+    include '*.xtf'
+    archiveName "${xtfFile}.zip"
+    destinationDir(file('./'))
+}
+
+task uploadZippedXTF(type: Exec) {
+    description = "Lädt die INTERLIS-Transferdatei auf die Aggregationsinfrastruktur hoch (Exec-Task...)."        
+    commandLine "curl", "-X", "POST", "-u", "geodienste_so:${aiPass}", "-F", "topic=planerischer_gewaesserschutz", "-F", "publish=true", "-F", "lv95_file=@${xtfFile}.zip", "https://integration.geodienste.ch/data_agg/interlis/import"
+}
+
+// TODO: clean up (if successful)

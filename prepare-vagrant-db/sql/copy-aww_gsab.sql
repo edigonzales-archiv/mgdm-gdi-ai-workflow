@@ -1,0 +1,13 @@
+SELECT
+	ogc_fid,
+	wkb_geometry,
+	erf_datum,
+	"zone",
+	erfasser,
+	symbol,
+	new_date,
+	archive_date,
+	"archive"
+FROM 
+    public.aww_gsab
+;
